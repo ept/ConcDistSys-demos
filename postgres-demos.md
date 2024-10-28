@@ -31,3 +31,37 @@ Now open a second terminal, and perform two concurrent transactions -- one in wh
 money to Bob, and another one vice versa. In each terminal, first run the `begin` and then the
 first `update`. Then run the second `update` in one of the terminals, which should block. Then run
 the second `update` in the other terminal, which should fail and abort that transaction.
+
+Transaction atomicity
+---------------------
+
+Run the following in `psql`:
+
+```sql
+select * from bank_accounts;
+begin;
+update bank_accounts set balance = balance - 10 where owner = 'alice';
+select * from bank_accounts;
+```
+
+In a separate terminal, run `ps aux | grep postgres` to find the server process, and kill it with
+`kill -9`. Try running something in `psql`, but it has disconnected, so `psql` needs to be
+restarted. On restart, the transaction has been rolled back.
+
+Isolation levels
+----------------
+
+Run two separate `psql` sessions. Start a transaction in one and make an update, but don't commit
+yet, then query in the other to demonstrate snapshot isolation.
+
+To demonstrate serializability, run this in two windows:
+
+```sql
+begin;
+set transaction isolation level serializable;
+select * from bank_accounts;
+insert into bank_accounts (owner, balance) values('carol', 10); -- in one terminal
+insert into bank_accounts (owner, balance) values('dave', 20);  -- in the other
+select * from bank_accounts;
+commit;
+```
