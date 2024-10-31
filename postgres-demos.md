@@ -48,11 +48,14 @@ In a separate terminal, run `ps aux | grep postgres` to find the server process,
 `kill -9`. Try running something in `psql`, but it has disconnected, so `psql` needs to be
 restarted. On restart, the transaction has been rolled back.
 
-Isolation levels
-----------------
+Serializable isolation in Postgres
+----------------------------------
 
-Run two separate `psql` sessions. Start a transaction in one and make an update, but don't commit
-yet, then query in the other to demonstrate snapshot isolation.
+Postgres implements serializability using an optimistic algorithm (serializable snapshot isolation).
+
+Run two separate `psql` sessions. First make an update outside of a transaction, and show that it
+immediately shows up in the other window. Then start a transaction in one window and make an update,
+but don't commit yet, then query in the other to demonstrate snapshot isolation.
 
 To demonstrate serializability, run this in two windows:
 
@@ -64,4 +67,60 @@ insert into bank_accounts (owner, balance) values('carol', 10); -- in one termin
 insert into bank_accounts (owner, balance) values('dave', 20);  -- in the other
 select * from bank_accounts;
 commit;
+```
+
+Serializable isolation in MySQL
+-------------------------------
+
+It's interesting to compare with MySQL, which uses strict 2PL for serializable transactions.
+I installed it like this:
+
+```shell
+brew install mysql
+/usr/local/opt/mysql/bin/mysqld_safe --datadir=/usr/local/var/mysql
+echo 'create database test;' | mysql -u root
+```
+
+Then run `mysql -u root test` and enter the following:
+
+```sql
+create table bank_accounts (owner varchar(50) primary key, balance decimal(10,2) not null) engine=innodb;
+insert into bank_accounts (owner, balance) values ('alice', 100), ('bob', 100);
+set session transaction isolation level serializable;
+begin;
+update bank_accounts set balance = balance - 10 where owner = 'alice';
+update bank_accounts set balance = balance + 10 where owner = 'bob';
+```
+
+In another terminal running `mysql -u root test` side-by-side:
+
+```sql
+set session transaction isolation level serializable;
+begin;
+select balance from bank_accounts where owner = 'alice'; -- blocks until the other transaction commits
+select balance from bank_accounts where owner = 'bob';
+```
+
+However, two read-only transactions can proceed concurrently, since MySQL uses a MRSW lock on each row.
+
+This also applies to reading a whole table, for example:
+
+```sql
+set session transaction isolation level serializable;
+begin;
+select * from bank_accounts; -- one terminal
+insert into bank_accounts (owner, balance) values('carol', 10); -- other terminal, blocks
+commit; -- both
+```
+
+That insert blocks, since the `select *` in the other window has taken a MRSW lock on the whole table.
+
+Next see what happens if both transactions first read the entire table, and then insert:
+
+```sql
+set session transaction isolation level serializable;
+begin;
+select * from bank_accounts; -- both terminals
+insert into bank_accounts (owner, balance) values('carol', 10); -- one terminal, blocks
+insert into bank_accounts (owner, balance) values('dave', 10); -- other terminal, triggers deadlock detector
 ```
