@@ -69,6 +69,20 @@ select * from bank_accounts;
 commit;
 ```
 
+To demonstrate a phantom read:
+
+```sql
+begin;
+set transaction isolation level serializable;
+select * from bank_accounts where balance < 20; -- in both terminals
+insert into bank_accounts (owner, balance) values('carol', 10); -- in one terminal
+insert into bank_accounts (owner, balance) values('dave', 15);  -- in the other
+commit; -- in both terminals; the second one fails with "could not serialize access"
+```
+
+Then try the same again without the command `set transaction isolation level serializable`, and
+notice that no error occurs.
+
 Serializable isolation in MySQL
 -------------------------------
 
@@ -103,6 +117,15 @@ select balance from bank_accounts where owner = 'bob';
 
 However, two read-only transactions can proceed concurrently, since MySQL uses a MRSW lock on each row.
 
+We can trigger deadlock as follows:
+
+```sql
+set session transaction isolation level serializable;
+begin;
+select balance from bank_accounts where owner = 'alice'; -- in both transactions
+update bank_accounts set balance = balance - 10 where owner = 'alice'; -- in both: first blocks, second deadlocks
+```
+
 This also applies to reading a whole table, for example:
 
 ```sql
@@ -123,4 +146,14 @@ begin;
 select * from bank_accounts; -- both terminals
 insert into bank_accounts (owner, balance) values('carol', 10); -- one terminal, blocks
 insert into bank_accounts (owner, balance) values('dave', 10); -- other terminal, triggers deadlock detector
+```
+
+To demonstrate predicate locking:
+
+```sql
+set session transaction isolation level serializable;
+begin;
+select * from bank_accounts where balance < 20; -- in both terminals
+insert into bank_accounts (owner, balance) values('carol', 10); -- in one terminal, blocks
+insert into bank_accounts (owner, balance) values('dave', 15);  -- in the other, triggers deadlock detector
 ```
