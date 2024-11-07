@@ -1,0 +1,2 @@
+# Fix number of workers to 1 since we're keeping state in global variables
+web: gunicorn --workers 1 --threads 1 app:app

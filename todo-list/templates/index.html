@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+    <h1>My task list</h1>
+    <ul id="tasks"></ul>
+
+    <form id="new_task">
+        <p><input type="text" id="text"> <button type="submit">Add task</button></p>
+    </form>
+</html>
+
+<script>
+loadTasks()
+
+async function loadTasks() {
+    const response = await (await fetch('/tasks')).json()
+    for (let task of response) renderTask(task)
+}
+
+document.getElementById('new_task').addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const input = document.getElementById('text')
+    const request = new URLSearchParams({text: input.value})
+    const response = await fetch('/tasks', {method: 'POST', body: request})
+    renderTask(await response.json())
+    input.value = ''
+})
+
+
+function renderTask(task) {
+    const list = document.getElementById('tasks')
+    list.insertAdjacentHTML('beforeend',
+                            `<li><input type="checkbox" id="task${task.id}"> ` +
+                            `<label for="task${task.id}"></label></li>`)
+    list.lastElementChild.querySelector('label').innerText = task.text
+}
+</script>
